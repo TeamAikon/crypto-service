@@ -118,9 +118,9 @@ export async function handleDecryptWithPrivateKeys(
     let { asymmetricEncryptedPrivateKeys } = req.body
     let { encrypted } = req.body
 
-    if (symmetricEncryptedPrivateKeys) {
-      await unwrapTransportEncryptedPasswordInSymOptions(symmetricEncryptedPrivateKeys, context)
-    }
+    // if (symmetricEncryptedPrivateKeys) {
+    //   await unwrapTransportEncryptedPasswordInSymOptions(symmetricEncryptedPrivateKeys, context)
+    // }
 
     if (symmetricOptionsForEncryptedPrivateKeys) {
       await unwrapTransportEncryptedPasswordInSymOptions(symmetricOptionsForEncryptedPrivateKeys, context)
@@ -177,13 +177,22 @@ export async function handleRecoverAndReencrypt(
 ) {
   const funcName = 'api/recover-and-reencrypt'
   let encryptedPayload
-  let asymmetricEncryptedPrivateKeys
   let password
   try {
     globalLogger.trace('called handleRecoverAndReencrypt')
     assertHeaderhasRequiredValues(req, ['api-key'], funcName)
-    assertBodyhasRequiredValues(req, ['chainType', 'asymmetricTransportEncryptedPrivateKeys'], funcName)
+    assertBodyhasRequiredValues(req, ['chainType'], funcName)
     assertBodyHasOnlyOneOfValues(req, ['encrypted', 'encryptedTransportEncrypted'], funcName)
+    assertBodyHasAtLeastOneOfValues(
+      req,
+      ['asymmetricTransportEncryptedPrivateKeys', 'asymmetricEncryptedPrivateKeys'],
+      funcName,
+    )
+    assertBodyHasOnlyOneOfValues(
+      req,
+      ['asymmetricTransportEncryptedPrivateKeys', 'asymmetricEncryptedPrivateKeys'],
+      funcName,
+    )
     assertBodyHasAtLeastOneOfValues(req, ['symmetricOptionsForReencrypt', 'asymmetricOptionsForReencrypt'], funcName)
     assertBodyValueIsArrayIfExists(req, ['asymmetricOptionsForReencrypt'], funcName)
 
@@ -195,6 +204,8 @@ export async function handleRecoverAndReencrypt(
       symmetricOptionsForReencrypt,
       asymmetricOptionsForReencrypt,
     } = req.body
+
+    let { asymmetricEncryptedPrivateKeys } = req.body
 
     // extract encrypted payload from encryptedTransportEncrypted (if provided)
     if (encryptedTransportEncrypted) {
@@ -213,13 +224,15 @@ export async function handleRecoverAndReencrypt(
       password = await unwrapTransportEncryptedPasswordInSymOptions(symmetricOptionsForReencrypt, context)
     }
 
-    // extract asymmetricEncryptedPrivateKeys
-    asymmetricEncryptedPrivateKeys = await extractEncryptedPayload(
-      asymmetricTransportEncryptedPrivateKeys,
-      'asymmetricTransportEncryptedPrivateKeys',
-      context,
-      state,
-    )
+    if (!asymmetricEncryptedPrivateKeys) {
+      // extract asymmetricEncryptedPrivateKeys
+      asymmetricEncryptedPrivateKeys = await extractEncryptedPayload(
+        asymmetricTransportEncryptedPrivateKeys,
+        'asymmetricTransportEncryptedPrivateKeys',
+        context,
+        state,
+      )
+    }
 
     const response = await recoverAndReencryptResolver(
       {
@@ -311,7 +324,12 @@ export async function handleSign(req: Request, res: Response, next: NextFunction
     assertBodyhasRequiredValues(req, ['chainType', 'toSign'], funcName)
     assertBodyHasAtLeastOneOfValues(
       req,
-      ['asymmetricTransportEncryptedPrivateKeys', 'symmetricEncryptedPrivateKeys'],
+      ['asymmetricTransportEncryptedPrivateKeys', 'symmetricEncryptedPrivateKeys', 'asymmetricEncryptedPrivateKeys'],
+      funcName,
+    )
+    assertBodyHasOnlyOneOfValues(
+      req,
+      ['asymmetricTransportEncryptedPrivateKeys', 'asymmetricEncryptedPrivateKeys'],
       funcName,
     )
     assertBodyValueIsArrayIfExists(req, ['symmetricEncryptedPrivateKeys'], funcName)
@@ -323,20 +341,27 @@ export async function handleSign(req: Request, res: Response, next: NextFunction
       symmetricEncryptedPrivateKeys,
     } = req.body
 
+    let { asymmetricEncryptedPrivateKeys } = req.body
+
     if (symmetricOptions) {
       await unwrapTransportEncryptedPasswordInSymOptions(symmetricOptions, context)
     }
 
-    // extract asymmetricEncryptedPrivateKeys
-    const asymmetricEncryptedPrivateKeys = await extractEncryptedPayload(
-      asymmetricTransportEncryptedPrivateKeys,
-      'asymmetricTransportEncryptedPrivateKeys',
-      context,
-      state,
-    )
+    if (!asymmetricEncryptedPrivateKeys) {
+      // extract asymmetricEncryptedPrivateKeys
+      asymmetricEncryptedPrivateKeys = await extractEncryptedPayload(
+        asymmetricTransportEncryptedPrivateKeys,
+        'asymmetricTransportEncryptedPrivateKeys',
+        context,
+        state,
+      )
+    }
 
-    if (asymmetricTransportEncryptedPrivateKeys && !Array.isArray(asymmetricEncryptedPrivateKeys)) {
-      const msg = `Bad parameter(s) in request body. 'encrypted' param (within asymmetricTransportEncryptedPrivateKeys) must be an array. If only one value, enclose it in an array i.e. [ ].`
+    if (asymmetricEncryptedPrivateKeys && !Array.isArray(asymmetricEncryptedPrivateKeys)) {
+      const param = asymmetricTransportEncryptedPrivateKeys
+        ? '(within asymmetricTransportEncryptedPrivateKeys)'
+        : 'asymmetricEncryptedPrivateKeys'
+      const msg = `Bad parameter(s) in request body. 'encrypted' param ${param} must be an array. If only one value, enclose it in an array i.e. [ ].`
       throw new ServiceError(msg, ErrorType.BadParam, funcName)
     }
 
